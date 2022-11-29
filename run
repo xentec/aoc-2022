@@ -1,0 +1,110 @@
+#!/usr/bin/env fish
+# Advent of Code runner
+
+set YEAR 2022
+set EXECUTOR 'ruby'
+set EXE_NAME 'main.rb'
+set EXE_HEADER "\
+#!/usr/bin/env $EXECUTOR
+# frozen_string_literal: true
+
+STDIN.read
+STDOUT.puts
+"
+
+if ! argparse 'd#day' 't/test' 'i/init=?' 'e/edit' 's/split' -- $argv
+	echo "\
+Usage: run [options]
+	-#    Run specific day #
+	-t    Run with test input and compare with test output
+
+	-i    Initialize day setup
+	-e    ...and start $EDITOR with day files
+"
+	exit 1
+end
+
+if test $_flag_day; and test $_flag_day -gt 0
+	test $_flag_day -le 25; or exit 1
+	set day $_flag_day
+else
+	if test (date +%m) -eq 12 # only in December
+		set day (date +%d)
+		test $day -le 25; or set day 25
+	else
+		set day 1
+	end
+end
+
+set INPUT_URL "https://adventofcode.com/$YEAR/day/$day/input"
+set day (printf '%02u' $day)
+
+if test $_flag_init;
+	set path "$day-$_flag_init"
+else
+	set path (echo $day-*)
+end
+
+set main "$path/$EXE_NAME"
+set input_path "$path/input"
+set test_in_path "$path/test-input"
+set test_out_path "$path/test-output"
+
+if test $_flag_init;
+	mkdir -p $path
+	touch -a $test_in_path $test_out_path
+	if ! test -f $main;
+		printf $EXE_HEADER > $main
+		echo "Created $main..."
+	end
+
+	if ! test -f $input_path
+		if ! test $AOC_SESSION_ID;
+			echo "Cannot download input: AOC_SESSION_ID envar is not set!"
+		else
+			echo "Downloading input..."
+			curl $INPUT_URL \
+				--silent \
+				--cookie "session=$AOC_SESSION_ID;" \
+				--output $input_path
+		end
+	end
+
+	if test $_flag_edit;
+		test $_flag_split; and set opt_split "--vsplit"
+
+		echo "Opening in $EDITOR now..."
+		sleep 2
+		exec $EDITOR $opt_split $test_out_path $main $test_in_path # better for closing files
+	end
+	exit
+else
+	set path (echo $day-*)
+	set main $path/$EXE_NAME
+end
+
+if test $_flag_test
+	set input_type "test"
+	set input_path $test_in_path
+	test -s $test_out_path; or exit 3
+else
+	set input_type "input"
+end
+
+test -s $input_path; or exit 2
+
+set input_size (stat -c '%s' $input_path)
+
+echo "Running $main with $input_type [$input_size]"
+echo "================================================================"
+set output ($EXECUTOR $main < $input_path; or exit 5)
+echo $output
+
+if test $_flag_test
+	set output_expected (cat $test_out_path)
+	if test $output != $output_expected
+		echo '!!------------------------------'
+		echo "expected: $output_expected"
+		exit 10
+	end
+end
